@@ -16,6 +16,12 @@ router.post("/user", async(req,res)=>{
     {
         res.status(400).json({error: "Missing username or password"})
     }
+    //Check to make sure a user doesnt already exist in the DB
+    const existingUser = await User.findOne({username: req.body.username})
+    if (existingUser)
+    {
+        return res.status(400).json({error: "Username already exists"})
+    }
 
     const newUser = await new User({
         username: req.body.username,
@@ -24,13 +30,93 @@ router.post("/user", async(req,res)=>{
     })
     try {
         await newUser.save()
-        res.sendStatus(201)
+        res.status(201).json({username: newUser.username, message: "Username created"})
     }
     catch(error){
         console.log(error)
     }
 })
+//Update users online status
+router.post("/auth", async(req,res) =>{
+    if (!req.body.username || !req.body.password)
+    {
+        res.status(400).json({error: "Missing username or password"})
+        return
+    }
+    //Try to find username in database, see if it matches with a username and password
+    //await finding user
+    let user = await User.findOne({username : req.body.username})
+        //Connection or server error
+        if (!user)
+        {
+            res.status(401).json({error: "Bad username"})
+        }
+        else
+        {
+        if (user.password != req.body.password)
+        {
+            res.status(401).json({error: "Bad password"})
+        }
+        else
+        {
+            //Create login token
+            username2 = user.username;
+            const token = jwt.encode({username: user.username}, secret)
+            const auth = 1;
+            //Change status to online
+            await User.updateOne({_id: user._id},{$set: {status:"online"}})
+            //respond with the token
+            res.json({
+                username2,
+                token:token,
+                auth:auth
+            })
+           
+        }
+    }
+})
+//Handle logout and let status be set to offline
+router.post("/logout", async (req,res)=> {
+    try {
+        const user = req.body.username
 
+        await User.updateOne({username: user}, {$set:{status: "offline"}})
+        res.status(200).send("Sucessfully logged out")
+    }
+    catch(err){
+        res.status(500).send(err)
+    }
+})
+//CHeck status of user with token, check if its valid
+router.get("/status", async(req,res) =>{
+    if (!req.headers["x-auth"]){
+        return res.status(401).json({error: "Missing auth header"})
+    }
+    const token = req.headers["x-auth"]
+    try{
+        const decoded = jwt.decode(token,secret)
+
+        //Send back all username and status fields to the user or front end
+        let users = User.find({}, "username status")
+        res.json(users)
+    }
+    catch(ex)
+    {
+        res.status(401).json({error: "invalid JWT"})
+    }
+})
+//Grab Users
+router.get("/user", async(req,res)=>{
+    try{
+        const users = await User.find({}, "username status");
+        res.send(users);
+    }
+    catch (err)
+    {
+        console.log(err)
+        res.status(400).send(err)
+    }
+})
 //Grab all songs in database
 router.get("/songs", async(req,res)=>{
     try{
@@ -100,3 +186,4 @@ router.delete("/songs/:id", async(req,res) => {
 
 app.use("/api", router);
 app.listen(3000)
+console.log("Server Started!")
